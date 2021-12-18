@@ -4,113 +4,106 @@ import sys
 from datetime import datetime
 from typing import Any
 
-def dump_numeric(value, typename: str):
-  s = str(value)
-  if s.find('.') >= 0:
-    s += 'f'
-  elif typename == 'float':
-    s += '.f'
-  return s
+class CodeGenerator:
 
-# rules to generate variable names (public data members)
-# Camel Case
-def dump_var_name(json_field: str):
-  json_field = json_field[0].lower() + json_field[1:]
-  return re.sub('(_[a-z])', lambda m: m.group(1)[1].upper(), json_field)
+  def __init__(self, scopes: list[str], structs: list[list[tuple]], used: set[str]):
+      self.scopes = scopes
+      self.structs = structs
+      self.used = used
 
-# rules to generate class names (public data members)
-# Camel Case
-def dump_class_name(json_field:str):
-  json_field = json_field[0].upper() + json_field[1:]
-  return re.sub('(_[a-z])', lambda m: m.group(1)[1].upper(), json_field)
+  @staticmethod
+  def as_numeric(typename: str, value):
+    s = str(value)
+    if s.find('.') >= 0:
+      s += 'f'
+    elif typename == 'float':
+      s += '.f'
+    return s
 
-def dump_class(class_name: str, struct: list[tuple], ostream = sys.stdout):
-  print('struct {} {{'.format(class_name), file = ostream)
-  for typename, varaible in struct:
-    print('  {} {};'.format(typename, varaible), file = ostream)
-  print('};\n', file = ostream)
+  # rules to generate variable names (public data members)
+  # Camel Case
+  @staticmethod
+  def as_var_name(json_field: str):
+    json_field = json_field[0].lower() + json_field[1:]
+    return re.sub('(_[a-z])', lambda m: m.group(1)[1].upper(), json_field)
 
-# generate a class name as concatenation of class scopes
-# it returns the name that is not used yet
-def choose_class_name(scopes: list[str], used: set):
-  assert len(scopes) > 0
-  class_name = str()
-  for scope in reversed(scopes):
-    class_name = scope + class_name
-    if class_name not in used:
-      used.add(class_name)
-      return class_name
-  return None
+  # rules to generate class names (public data members)
+  # Camel Case
+  @staticmethod
+  def as_class_name(json_field:str):
+    json_field = json_field[0].upper() + json_field[1:]
+    return re.sub('(_[a-z])', lambda m: m.group(1)[1].upper(), json_field)
 
-def generate(json_value: Any, depth: int, scopes: list[str], structs: list[list[tuple]], used: set[str], ostream = sys.stdout):
-  PREFIX = depth * '  '
+  @staticmethod
+  def dump_class(class_name: str, struct: list[tuple], ostream = sys.stdout):
+    print('struct {} {{'.format(class_name), file = ostream)
+    for typename, varaible in struct:
+      print('  {} {};'.format(typename, varaible), file = ostream)
+    print('};\n', file = ostream)
+  
+  # generate a class name as concatenation of class scopes
+  # it returns the name that is not used yet
+  def choose_class_name(self):
+    assert len(self.scopes) > 0
+    class_name = str()
+    for scope in reversed(self.scopes):
+      class_name = scope + class_name
+      if class_name not in self.used:
+        self.used.add(class_name)
+        return class_name
+    return None
 
-  if isinstance(json_value, dict):
-    for key in json_value:
-      if isinstance(json_value[key], dict):
-        # open class declaration
-        print('{}struct {} {{'.format(PREFIX, dump_class_name(key)), file = ostream)
-        # add dict
-        structs += [[]]
-        scopes += [ dump_class_name(key) ]
-        generate(json_value[key], depth + 1, scopes, structs, used, ostream)
-        typename = choose_class_name(scopes, used)
-        scopes.pop()
-        struct = structs.pop()
-        # close class declaration
-        if depth != 1:
-          print('{}}} {};'.format(PREFIX, dump_var_name(key)), file = ostream)
-          structs[-1] += [(typename, dump_var_name(key))]
+  def generate(self, json_value: Any, ostream = sys.stdout):
+    if isinstance(json_value, dict):
+      for key in json_value:
+        if isinstance(json_value[key], dict):
+          # add(open) class declaration i.e., create dict
+          self.structs += [[]]
+          self.scopes += [ CodeGenerator.as_class_name(key) ]
+          self.generate(json_value[key], ostream)
+          typename = self.choose_class_name()
+          # close class declaration
+          self.scopes.pop()
+          struct = self.structs.pop()
+          if len(self.structs) > 0:
+            self.structs[-1] += [(typename, CodeGenerator.as_var_name(key))]
+          CodeGenerator.dump_class(typename, struct, ostream)
+        elif isinstance(json_value[key], str):
+          # declare string variable
+          self.structs[-1] += [('std::string', CodeGenerator.as_var_name(key))]
+        elif isinstance(json_value[key], list):
+          array_len = len(json_value[key])
+          assert array_len > 0, "Wrong JSON sample: empty list as input"
+          element_typename = type(json_value[key][0]).__name__
+          # declare array variable
+          self.structs[-1] += [
+            ('std::array<{}, {}>'.format(element_typename, array_len), 
+            CodeGenerator.as_var_name(key))]
         else:
-          print('{}}};'.format(PREFIX), file = ostream)
-        dump_class(typename, struct)
-      elif isinstance(json_value[key], str):
-        # declare string variable
-        print('{}std::string {} = "{}";'.format(PREFIX
-            , dump_var_name(key)
-            , json_value[key])
-          , file = ostream)
-        structs[-1] += [('std::string', dump_var_name(key))]
-      elif isinstance(json_value[key], list):
-        array_len = len(json_value[key])
-        assert array_len > 0, "Wrong JSON sample: empty list as input"
-        element_typename = type(json_value[key][0]).__name__
-        elements = ', '.join([ dump_numeric(x, element_typename) for x in json_value[key]])
-        # declare array variable
-        print('{}std::array<{type}, {size}> {variable} = {{ {values} }};'
-          .format(PREFIX
-              , type = element_typename
-              , size = array_len
-              , variable = dump_var_name(key)
-              , values = elements)
-            , file = ostream)
-        structs[-1] += [('std::array<{}, {}>'.format(element_typename, array_len), dump_var_name(key))]
-      else:
-        type_name = type(json_value[key]).__name__
-        # declare float/int variable 
-        print('{}{} {} = {};'.format(PREFIX
-            , type_name
-            , dump_var_name(key)
-            , dump_numeric(json_value[key], type_name))
-          , file = ostream)
-        structs[-1] += [(type_name, dump_var_name(key))]
+          type_name = type(json_value[key]).__name__
+          # declare float/int variable 
+          self.structs[-1] += [(type_name, CodeGenerator.as_var_name(key))]
 
 
-data = {}
-with open('db.json', 'r') as istream:
-  data = json.load(istream)
+template = (
+  '// This file is auto generated by script\n' + 
+  '// Date: {}\n')
 
-template = '// This file is auto generated by script\n// Date: {}\n'
-
-includes = ('#include <string>\n' + 
+includes = (
+  '#include <string>\n' + 
   '#include <array>\n\n' + 
   '#include "rapidjson/document.h"\n' + 
   '#include "rapidjson/writer.h"\n' + 
   '#include "rapidjson/stringbuffer.h"\n')
 
+data = {}
+with open('db.json', 'r') as istream:
+  data = json.load(istream)
+  
 with open('generated.hpp', 'w') as ostream:
   print(template.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")), file = ostream)
   print(includes, file = ostream)
   print('namespace json_autogenerated_classes {\n', file = ostream)
-  generate(data, 1, [], [], set(), ostream)
-  print('\n} // namespace json_autogenerated_classes', file = ostream)
+  code_generator = CodeGenerator([], [], set())
+  code_generator.generate(data, ostream)
+  print('} // namespace json_autogenerated_classes', file = ostream)
