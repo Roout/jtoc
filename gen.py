@@ -4,6 +4,28 @@ import sys
 from datetime import datetime
 from typing import Any
 
+def snake_to_lower_camel(variable: str):
+  assert len(variable) > 0
+  assert variable[0].islower()
+  return re.sub('(_[a-z])', lambda m: m.group(1)[1].upper(), variable)
+
+def snake_to_upper_camel(variable: str):
+  assert len(variable) > 0
+  variable = variable[0].upper() + variable[1:]
+  return re.sub('(_[a-z])', lambda m: m.group(1)[1].upper(), variable)
+
+def upper_camel_to_snake(variable: str):
+  assert len(variable) > 0
+  assert variable[0].isupper()
+  prefix = variable[0].lower()
+  suffix = re.sub('([A-Z])', lambda m: '_' + m.group(1).lower(), variable[1:])
+  return prefix + suffix
+
+def lower_camel_to_snake(variable: str):
+  assert len(variable) > 0
+  assert variable[0].islower()
+  return re.sub('([A-Z])', lambda m: '_' + m.group(1).lower(), variable)
+
 class CodeGenerator:
 
   def __init__(self, scopes: list[str], structs: list[list[tuple]], used: set[str]):
@@ -17,7 +39,7 @@ class CodeGenerator:
         'bool': 'GetBool()', 
         'float': 'GetFloat()', 
         'int': 'GetInt()', 
-        'std::string': 'GetString()'}
+        'std::string': 'GetString()' }
 
   @staticmethod
   def cpp_numeric(typename: str, value):
@@ -28,28 +50,26 @@ class CodeGenerator:
       s += '.f'
     return s
 
-  # rules to generate variable names (public data members)
-  # from underscores
-  # Camel Case
+  # `json_field` - json field in snake case
+  # return cpp variable name in lower camel
   @staticmethod
   def cpp_var_name(json_field: str):
-    json_field = json_field[0].lower() + json_field[1:]
-    return re.sub('(_[a-z])', lambda m: m.group(1)[1].upper(), json_field)
+    assert lower_camel_to_snake(snake_to_lower_camel(json_field)) == json_field, 'conversation is not bidirectional'
+    return snake_to_lower_camel(json_field)
     
-  # TODO: just save previous name somewhere and query it
+  # `variable` - cpp variable in lower camel
+  # return json field in snake case
   @staticmethod
   def json_var_name(variable: str):
-    assert len(variable) > 0
-    assert variable[0].islower()
-    return re.sub('([A-Z])', lambda m: '_' + m.group(1).lower(), variable)
+    assert snake_to_lower_camel(lower_camel_to_snake(variable)) == variable, 'conversation is not bidirectional'
+    return lower_camel_to_snake(variable)
   
-  # rules to generate class names (public data members)
-  # Camel Case
+  # `json_field` - json field in snake case
+  # return cpp class name in upper camel
   @staticmethod
-  def cpp_class_name(json_field:str):
-    json_field = json_field[0].upper() + json_field[1:]
-    return re.sub('(_[a-z])', lambda m: m.group(1)[1].upper(), json_field)
-
+  def cpp_class_name(json_field: str):
+    assert upper_camel_to_snake(snake_to_upper_camel(json_field)) == json_field, 'conversation is not bidirectional'
+    return snake_to_upper_camel(json_field)
 
   def array_parser_func(self, indent: str, fulltype: str, array_name: str, object_instance: str):
     assert fulltype.find('std::array') != -1, 'Expect `std::array<T, size>` string'
@@ -72,7 +92,7 @@ class CodeGenerator:
     return array_parser
 
   def buffer_parser_func(self, class_name: str, struct: list[tuple]):
-    obj_instance = self.cpp_var_name(class_name)
+    obj_instance = class_name[0].lower() + class_name[1:]
     self.footer += 'inline void FromJson(const rapidjson::Value& json, {}& {}) {{\n'.format(
       class_name, obj_instance)
     for typename, variable in struct:
