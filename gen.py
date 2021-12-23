@@ -71,11 +71,12 @@ class CodeGenerator:
     assert upper_camel_to_snake(snake_to_upper_camel(json_field)) == json_field, 'conversation is not bidirectional'
     return snake_to_upper_camel(json_field)
 
-  def array_parser_func(self, indent: str, fulltype: str, array_name: str, object_instance: str):
-    assert fulltype.find('std::array') != -1, 'Expect `std::array<T, size>` string'
+  # `object_instance` - array owner
+  def array_parser_func(self, indent: str, array_type: str, array_name: str, object_instance: str):
+    assert array_type.find('std::array') != -1, 'Expect `std::array<T, size>` string'
     array_parser = ''
 
-    matched = re.search(r'< *([^,]+) *, *([0-9]+) *>', fulltype)
+    matched = re.search(r'< *([^,]+) *, *([0-9]+) *>', array_type)
     assert matched != None
     innertype = matched.groups(2)[0]
     innersize = matched.groups(2)[1]
@@ -91,10 +92,17 @@ class CodeGenerator:
 
     return array_parser
 
-  def buffer_parser_func(self, class_name: str, struct: list[tuple]):
+  # `class_name` is a cpp struct name
+  # `struct` is a cpp struct definition with all it's data members as dictionary
+  def dump_cpp_parser_func(self, class_name: str, struct: list[tuple]):
+    """generate and dump `FromJson(const rapidjson::Value& json, T& obj)` 
+    to string buffer - `self.footer`"""
+
+    # create object/variable name from class name
     obj_instance = class_name[0].lower() + class_name[1:]
     self.footer += 'inline void FromJson(const rapidjson::Value& json, {}& {}) {{\n'.format(
       class_name, obj_instance)
+    
     for typename, variable in struct:
       if typename in self.used:
         # it's an object of custom type
@@ -109,10 +117,11 @@ class CodeGenerator:
           obj_instance, 
           variable,
           self.json_var_name(variable),
-          self.methods_by_type[typename]
-        )
+          self.methods_by_type[typename])
+
     self.footer += '}\n\n'
 
+  # dump class definition to ostream
   @staticmethod
   def dump_class(class_name: str, struct: list[tuple], ostream = sys.stdout):
     print('struct {} {{'.format(class_name), file = ostream)
@@ -133,37 +142,40 @@ class CodeGenerator:
     return None
 
   def generate(self, json_value: Any, ostream = sys.stdout):
-    if isinstance(json_value, dict):
-      for key in json_value:
-        if isinstance(json_value[key], dict):
-          # add(open) class declaration i.e., create dict
-          self.structs += [[]]
-          self.scopes += [ CodeGenerator.cpp_class_name(key) ]
-          self.generate(json_value[key], ostream)
-          typename = self.choose_class_name()
-          assert typename != None, 'all class names are already reserved'
-          # close class declaration
-          self.scopes.pop()
-          struct = self.structs.pop()
-          if len(self.structs) > 0:
-            self.structs[-1] += [(typename, CodeGenerator.cpp_var_name(key))]
-          CodeGenerator.dump_class(typename, struct, ostream)
-          self.buffer_parser_func(typename, struct)
-        elif isinstance(json_value[key], str):
-          # declare string variable
-          self.structs[-1] += [('std::string', CodeGenerator.cpp_var_name(key))]
-        elif isinstance(json_value[key], list):
-          array_len = len(json_value[key])
-          assert array_len > 0, "wrong JSON sample: empty list as input"
-          element_typename = type(json_value[key][0]).__name__
-          # declare array variable
-          self.structs[-1] += [
-            ('std::array<{}, {}>'.format(element_typename, array_len), 
-            CodeGenerator.cpp_var_name(key))]
-        else:
-          type_name = type(json_value[key]).__name__
-          # declare float/int variable 
-          self.structs[-1] += [(type_name, CodeGenerator.cpp_var_name(key))]
+    if not isinstance(json_value, dict):
+      return
+
+    for key in json_value:
+      if isinstance(json_value[key], dict):
+        # add(open) class declaration i.e., create dict
+        self.structs.append([])
+        self.scopes.append(CodeGenerator.cpp_class_name(key))
+        self.generate(json_value[key], ostream)
+        typename = self.choose_class_name()
+        if typename == None:
+          raise RuntimeError('all class names are already reserved')
+        # remove(close) class declaration
+        self.scopes.pop()
+        struct = self.structs.pop()
+        if len(self.structs) > 0:
+          self.structs[-1] += [(typename, CodeGenerator.cpp_var_name(key))]
+        CodeGenerator.dump_class(typename, struct, ostream)
+        self.dump_cpp_parser_func(typename, struct)
+      elif isinstance(json_value[key], str):
+        # declare string variable
+        self.structs[-1] += [('std::string', CodeGenerator.cpp_var_name(key))]
+      elif isinstance(json_value[key], list):
+        array_len = len(json_value[key])
+        assert array_len > 0, "wrong JSON sample: empty list as input"
+        element_typename = type(json_value[key][0]).__name__
+        # declare array variable
+        self.structs[-1] += [
+          ('std::array<{}, {}>'.format(element_typename, array_len), 
+          CodeGenerator.cpp_var_name(key))]
+      else:
+        type_name = type(json_value[key]).__name__
+        # declare float/int variable 
+        self.structs[-1] += [(type_name, CodeGenerator.cpp_var_name(key))]
 
 
 template = (
