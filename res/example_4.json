@@ -1,0 +1,40 @@
+{
+  "menu": {  
+    "id": "file",  
+    "value": "File",  
+    "popup": {  
+      "menuitem": [  
+        { 
+            "value": [
+                { 
+                    "v1":"New",  
+                    "v2":"Old",
+                    "v3":"Update"
+                },
+                { 
+                    "v1":"Key1",  
+                    "v2":"Key2",
+                    "v3":"Key3"
+                }
+            ],
+            "onclick": "CreateDoc()"
+        },
+        { 
+            "value": [
+                { 
+                    "v1":"New1",  
+                    "v2":"Old1",
+                    "v3":"Update1"
+                },
+                { 
+                    "v1":"Key11",  
+                    "v2":"Key22",
+                    "v3":"Key33"
+                }
+            ],
+            "onclick": "CreateDoc()"
+        }
+      ]  
+    }  
+  }
+}

@@ -33,6 +33,12 @@ self.methods_by_type = {
 
 It also can generate arrays like `std::array<T, Size>` if `T` is a simple type from above.
 
+Array of custom (user-defined) types is also supported but has strict restriction.
+All subobjects of the same array **MUST** have the same structure i.e, all their **keys are SAME** (so they can be converted to the objects of the same type). Of course values can be different.
+
+Example:
+...
+
 ### Names
 
 Naming conventions? Thrown away...
