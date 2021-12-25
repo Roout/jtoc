@@ -45,4 +45,21 @@ Obviously ACRONYMS not supported.
 
 ## Run
 
-...
+Provide input and output file names like in the example
+
+```bash
+$ ls
+external/  gen.py  LICENSE  README.md  res/
+$ py gen.py -h
+usage: gen.py [-h] [-i INPUT] [-o OUTPUT]
+
+Generate a c++ file from the json schema
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -i INPUT, --input INPUT
+                        path to json schema
+  -o OUTPUT, --output OUTPUT
+                        c++ file which will be generated from json schema
+$ py gen.py -i res/example_0.json -o res/example_0.hpp
+```
