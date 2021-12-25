@@ -95,7 +95,7 @@ class CodeGenerator:
 
   # `class_name` is a cpp struct name
   # `struct` is a cpp struct definition with all it's data members as dictionary
-  def dump_cpp_parser_func(self, class_name: str, struct: list[tuple]):
+  def dump_json_parser_func(self, class_name: str, struct: list[tuple]):
     """generate and dump `FromJson(const rapidjson::Value& json, T& obj)` 
     to string buffer - `self.footer`"""
 
@@ -161,7 +161,7 @@ class CodeGenerator:
         if len(self.structs) > 0:
           self.structs[-1] += [(typename, CodeGenerator.cpp_var_name(key))]
         CodeGenerator.dump_class(typename, struct, ostream)
-        self.dump_cpp_parser_func(typename, struct)
+        self.dump_json_parser_func(typename, struct)
       elif isinstance(json_value[key], str):
         # declare string variable
         self.structs[-1] += [('std::string', CodeGenerator.cpp_var_name(key))]
