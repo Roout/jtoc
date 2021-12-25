@@ -86,9 +86,11 @@ class CodeGenerator:
       raise ValueError('Unsupported type')
 
     method = self.methods_by_type[innertype]
-    array_parser += '{}const auto& values = json["{}"].GetArray();\n'.format(indent, array_name)
-    array_parser += '{}for (size_t i = 0; i < {}; i++) {{\n'.format(indent, innersize)
-    array_parser += '{}  {}.{}[i] = values[i].{}\n'.format(indent, object_instance, array_name, method)
+    array_parser += '{}{{\n'.format(indent)
+    array_parser += '{}  const auto& values = json["{}"].GetArray();\n'.format(indent, array_name)
+    array_parser += '{}  for (size_t i = 0; i < {}; i++) {{\n'.format(indent, innersize)
+    array_parser += '{}    {}.{}[i] = values[i].{}\n'.format(indent, object_instance, array_name, method)
+    array_parser += '{}  }}\n'.format(indent)
     array_parser += '{}}}\n'.format(indent)
 
     return array_parser
