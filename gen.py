@@ -41,6 +41,12 @@ class CodeGenerator:
         'float': 'GetFloat()', 
         'int': 'GetInt()', 
         'std::string': 'GetString()' }
+      self.cpptype_by_python_type = {
+        'bool': 'bool',
+        'str': 'std::string',
+        'float': 'float',
+        'list': 'std::array',
+        'int': 'int' }
 
   @staticmethod
   def cpp_numeric(typename: str, value):
@@ -72,6 +78,11 @@ class CodeGenerator:
     assert upper_camel_to_snake(snake_to_upper_camel(json_field)) == json_field, 'conversation is not bidirectional'
     return snake_to_upper_camel(json_field)
 
+  def cpp_var_type(self, python_typename: str):
+    if python_typename not in self.cpptype_by_python_type:
+      raise ValueError('Unsupported python to cpp typename conversation')
+    return self.cpptype_by_python_type[python_typename]
+
   # `object_instance` - array owner
   def array_parser_func(self, indent: str, array_type: str, array_name: str, object_instance: str):
     assert array_type.find('std::array') != -1, 'Expect `std::array<T, size>` string'
@@ -89,7 +100,7 @@ class CodeGenerator:
     array_parser += '{}{{\n'.format(indent)
     array_parser += '{}  const auto& values = json["{}"].GetArray();\n'.format(indent, array_name)
     array_parser += '{}  for (size_t i = 0; i < {}; i++) {{\n'.format(indent, innersize)
-    array_parser += '{}    {}.{}[i] = values[i].{}\n'.format(indent, object_instance, array_name, method)
+    array_parser += '{}    {}.{}[i] = values[i].{};\n'.format(indent, object_instance, array_name, method)
     array_parser += '{}  }}\n'.format(indent)
     array_parser += '{}}}\n'.format(indent)
 
@@ -164,21 +175,20 @@ class CodeGenerator:
           self.structs[-1] += [(typename, CodeGenerator.cpp_var_name(key))]
         CodeGenerator.dump_class(typename, struct, ostream)
         self.dump_json_parser_func(typename, struct)
-      elif isinstance(json_value[key], str):
-        # declare string variable
-        self.structs[-1] += [('std::string', CodeGenerator.cpp_var_name(key))]
       elif isinstance(json_value[key], list):
         array_len = len(json_value[key])
         assert array_len > 0, "wrong JSON sample: empty list as input"
         element_typename = type(json_value[key][0]).__name__
+        element_typename = self.cpp_var_type(element_typename)
         # declare array variable
         self.structs[-1] += [
           ('std::array<{}, {}>'.format(element_typename, array_len), 
           CodeGenerator.cpp_var_name(key))]
       else:
-        type_name = type(json_value[key]).__name__
-        # declare float/int variable 
-        self.structs[-1] += [(type_name, CodeGenerator.cpp_var_name(key))]
+        typename = type(json_value[key]).__name__
+        typename = self.cpp_var_type(typename)
+        # declare float/int/bool/std::string variable 
+        self.structs[-1] += [(typename, CodeGenerator.cpp_var_name(key))]
 
 def main():
   parser = argparse.ArgumentParser(description = 'Generate a c++ file from the json schema')
