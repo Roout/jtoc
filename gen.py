@@ -94,13 +94,21 @@ class CodeGenerator:
     innersize = matched.groups(2)[1]
 
     if innertype not in self.methods_by_type:
-      raise ValueError('Unsupported type')
-
-    method = self.methods_by_type[innertype]
+      if innertype not in self.used:
+        raise TypeError('This custom(?) type is not supported')
+      method = None
+    else:
+      method = self.methods_by_type[innertype]
     array_parser += '{}{{\n'.format(indent)
     array_parser += '{}  const auto& values = json["{}"].GetArray();\n'.format(indent, array_name)
     array_parser += '{}  for (size_t i = 0; i < {}; i++) {{\n'.format(indent, innersize)
-    array_parser += '{}    {}.{}[i] = values[i].{};\n'.format(indent, object_instance, array_name, method)
+    if method is None:
+      # parse custom user-defined type
+      # use `void FromJson(const rapidjson::Value& json, T& obj)`
+      array_parser += '{}    FromJson(values[i], {}.{}[i]);\n'.format(indent, object_instance, array_name)
+    else:
+      # parse one of basic type (key in `self.methods_by_type` dictionary)
+      array_parser += '{}    {}.{}[i] = values[i].{};\n'.format(indent, object_instance, array_name, method)
     array_parser += '{}  }}\n'.format(indent)
     array_parser += '{}}}\n'.format(indent)
 
@@ -175,20 +183,49 @@ class CodeGenerator:
           self.structs[-1] += [(typename, CodeGenerator.cpp_var_name(key))]
         CodeGenerator.dump_class(typename, struct, ostream)
         self.dump_json_parser_func(typename, struct)
-      elif isinstance(json_value[key], list):
-        array_len = len(json_value[key])
-        assert array_len > 0, "wrong JSON sample: empty list as input"
-        element_typename = type(json_value[key][0]).__name__
-        element_typename = self.cpp_var_type(element_typename)
-        # declare array variable
-        self.structs[-1] += [
-          ('std::array<{}, {}>'.format(element_typename, array_len), 
-          CodeGenerator.cpp_var_name(key))]
+      
+      elif isinstance(json_value[key], list): # key = menuitem # json_value = popup 
+        array_size = len(json_value[key])
+        assert array_size > 0, "wrong JSON sample: empty list as input"
+        
+        if isinstance(json_value[key][0], dict):
+          # this is array of custom objects
+          # I expect they have same set of keys while values can differ 
+          # TODO: throw exception if the expectations failed
+
+          # treat array of objects as struct with array data member:
+          # `key` becomes a struct whereas array becomes a data member
+          self.structs.append([])
+          self.scopes.append(CodeGenerator.cpp_class_name(key))
+          # generate struct for one of those fields (take 0th)
+          self.generate(json_value[key][0], ostream)
+          array_value_type = self.choose_class_name()
+          if array_value_type == None:
+            raise RuntimeError('all class names are already reserved')
+
+          self.scopes.pop()
+          struct = self.structs.pop()
+          assert len(self.structs) > 0, 'Array must have an owner (outer struct)'
+
+          # add array as data member of outer-struct
+          self.structs[-1] += [
+            ('std::array<{}, {}>'.format(array_value_type, array_size), 
+            CodeGenerator.cpp_var_name(key))]
+          CodeGenerator.dump_class(array_value_type, struct, ostream)
+          self.dump_json_parser_func(array_value_type, struct)
+
+        else:
+          array_value_type = type(json_value[key][0]).__name__
+          array_value_type = self.cpp_var_type(array_value_type)
+          # declare array variable
+          self.structs[-1] += [
+            ('std::array<{}, {}>'.format(array_value_type, array_size), 
+            CodeGenerator.cpp_var_name(key))]
       else:
-        typename = type(json_value[key]).__name__
-        typename = self.cpp_var_type(typename)
+        value_type = type(json_value[key]).__name__
+        value_type = self.cpp_var_type(value_type)
         # declare float/int/bool/std::string variable 
-        self.structs[-1] += [(typename, CodeGenerator.cpp_var_name(key))]
+        self.structs[-1] += [(value_type, CodeGenerator.cpp_var_name(key))]
 
 def main():
   parser = argparse.ArgumentParser(description = 'Generate a c++ file from the json schema')
