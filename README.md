@@ -34,10 +34,46 @@ self.methods_by_type = {
 It also can generate arrays like `std::array<T, Size>` if `T` is a simple type from above.
 
 Array of custom (user-defined) types is also supported but has strict restriction.
-All subobjects of the same array **MUST** have the same structure i.e, all their **keys are SAME** (so they can be converted to the objects of the same type). Of course values can be different.
+All subobjects of the same array **MUST** have the same structure i.e, all their **keys are SAME** (so they can be converted to the objects of the same type). Of course values can be different. See example below.
 
-Example:
-...
+Snippet taken from [here](https://github.com/Roout/jtoc/blob/master/res/example_3.json)
+
+```json
+{
+  "menu": {  
+    "id": "file",  
+    "value": "File",  
+    "popup": {  
+      "menuitem": [  
+        { "value": "New", "onclick": "CreateDoc()"},  
+        { "value": "Open", "onclick": "OpenDoc()"},  
+        { "value": "Save", "onclick": "SaveDoc()"}  
+      ]  
+    }  
+  }
+}  
+```
+
+Cpp generator can handle now this type of schemas:
+
+```cpp
+struct Menuitem {
+  std::string value;
+  std::string onclick;
+};
+
+struct Popup {
+  std::array<Menuitem, 3> menuitem;
+};
+
+struct Menu {
+  std::string id;
+  std::string value;
+  Popup popup;
+};
+```
+
+You can see more detailed output [here](https://github.com/Roout/jtoc/blob/master/res/example_3.hpp.txt)
 
 ### Names
 
