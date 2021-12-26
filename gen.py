@@ -4,7 +4,7 @@ import sys
 import argparse
 from datetime import datetime
 import uuid
-from typing import Any
+from typing import Any, Dict, List, Set, Tuple
 
 def snake_to_lower_camel(variable: str):
   assert len(variable) > 0
@@ -29,25 +29,32 @@ def lower_camel_to_snake(variable: str):
   return re.sub('([A-Z])', lambda m: '_' + m.group(1).lower(), variable)
 
 class CodeGenerator:
+  methods_by_type: Dict[str, str] = None
+  cpptype_by_python_type: Dict[str, str] = None
+  
+  def __init__(self):
+      self.scopes: List[str] = []
+      self.structs: List[List[Tuple]] = []
+      self.used: Set[str] = set()
+      self.footer: str = ''
 
-  def __init__(self, scopes: list[str], structs: list[list[tuple]], used: set[str]):
-      self.scopes = scopes
-      self.structs = structs
-      self.used = used
-      self.footer = ''
       # this is all supported types and array:
       # std::array<one_of_supported_type, ...>
-      self.methods_by_type = {
-        'bool': 'GetBool()', 
-        'float': 'GetFloat()', 
-        'int': 'GetInt()', 
-        'std::string': 'GetString()' }
-      self.cpptype_by_python_type = {
-        'bool': 'bool',
-        'str': 'std::string',
-        'float': 'float',
-        'list': 'std::array',
-        'int': 'int' }
+      if CodeGenerator.methods_by_type == None:
+        # initialize static variables
+        CodeGenerator.methods_by_type = {
+          'bool': 'GetBool()', 
+          'float': 'GetFloat()', 
+          'int': 'GetInt()', 
+          'std::string': 'GetString()' }
+
+        assert CodeGenerator.cpptype_by_python_type == None
+        CodeGenerator.cpptype_by_python_type = {
+          'bool': 'bool',
+          'str': 'std::string',
+          'float': 'float',
+          'list': 'std::array',
+          'int': 'int' }
 
   @staticmethod
   def cpp_numeric(typename: str, value):
@@ -79,10 +86,11 @@ class CodeGenerator:
     assert upper_camel_to_snake(snake_to_upper_camel(json_field)) == json_field, 'conversation is not bidirectional'
     return snake_to_upper_camel(json_field)
 
-  def cpp_var_type(self, python_typename: str):
-    if python_typename not in self.cpptype_by_python_type:
+  @staticmethod
+  def cpp_var_type(python_typename: str):
+    if python_typename not in CodeGenerator.cpptype_by_python_type:
       raise ValueError('Unsupported python to cpp typename conversation')
-    return self.cpptype_by_python_type[python_typename]
+    return CodeGenerator.cpptype_by_python_type[python_typename]
 
   # `object_instance` - array owner
   def array_parser_func(self, indent: str, array_type: str, array_name: str, object_instance: str):
@@ -94,12 +102,12 @@ class CodeGenerator:
     innertype = matched.groups(2)[0]
     innersize = matched.groups(2)[1]
 
-    if innertype not in self.methods_by_type:
+    if innertype not in CodeGenerator.methods_by_type:
       if innertype not in self.used:
         raise TypeError('This custom(?) type is not supported')
       method = None
     else:
-      method = self.methods_by_type[innertype]
+      method = CodeGenerator.methods_by_type[innertype]
     array_parser += '{}{{\n'.format(indent)
     array_parser += '{}  const auto& values = json["{}"].GetArray();\n'.format(indent, array_name)
     array_parser += '{}  for (size_t i = 0; i < {}; i++) {{\n'.format(indent, innersize)
@@ -108,7 +116,7 @@ class CodeGenerator:
       # use `void FromJson(const rapidjson::Value& json, T& obj)`
       array_parser += '{}    FromJson(values[i], {}.{}[i]);\n'.format(indent, object_instance, array_name)
     else:
-      # parse one of basic type (key in `self.methods_by_type` dictionary)
+      # parse one of basic type (key in `CodeGenerator.methods_by_type` dictionary)
       array_parser += '{}    {}.{}[i] = values[i].{};\n'.format(indent, object_instance, array_name, method)
     array_parser += '{}  }}\n'.format(indent)
     array_parser += '{}}}\n'.format(indent)
@@ -140,7 +148,7 @@ class CodeGenerator:
           obj_instance, 
           variable,
           self.json_var_name(variable),
-          self.methods_by_type[typename])
+          CodeGenerator.methods_by_type[typename])
 
     self.footer += '}\n\n'
 
@@ -217,14 +225,14 @@ class CodeGenerator:
 
         else:
           array_value_type = type(json_value[key][0]).__name__
-          array_value_type = self.cpp_var_type(array_value_type)
+          array_value_type = CodeGenerator.cpp_var_type(array_value_type)
           # declare array variable
           self.structs[-1] += [
             ('std::array<{}, {}>'.format(array_value_type, array_size), 
             CodeGenerator.cpp_var_name(key))]
       else:
         value_type = type(json_value[key]).__name__
-        value_type = self.cpp_var_type(value_type)
+        value_type = CodeGenerator.cpp_var_type(value_type)
         # declare float/int/bool/std::string variable 
         self.structs[-1] += [(value_type, CodeGenerator.cpp_var_name(key))]
 
@@ -257,7 +265,7 @@ def main():
     print('#define {}\n'.format(include_guard), file = ostream)
     print(includes, file = ostream)
     print('namespace json_autogenerated_classes {\n', file = ostream)
-    code_generator = CodeGenerator([], [], set())
+    code_generator = CodeGenerator()
     code_generator.generate(data, ostream)
     print('} // namespace json_autogenerated_classes\n', file = ostream)
     print('namespace json_autogenerated_classes {\n', file = ostream)
