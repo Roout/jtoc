@@ -7,7 +7,7 @@ if [ "$#" -eq "1" ]; then
 fi
 
 # dependencies
-RAPIDJSON="../external/include"
+RAPIDJSON="../external/rapidjson/include"
 
 CC=g++
 CFLAGS="-std=c++17 -Wall -Werror -Wextra -pedantic -I$RAPIDJSON"
