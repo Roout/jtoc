@@ -192,7 +192,7 @@ class CodeGenerator:
             class_name = scope + class_name
             if class_name not in self.used:
                 self.used.add(class_name)
-            return class_name
+                return class_name
         return None
 
     def generate(self, json_value: Any, ostream=sys.stdout):
