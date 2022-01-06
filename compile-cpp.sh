@@ -14,7 +14,7 @@ log() {
     fi
 }
 
-failures=0
+compiled=0
 
 # create directory if not exist
 [[ -d cpp ]] || mkdir cpp
@@ -34,9 +34,10 @@ for input in $(ls ./res); do
 
         if [[ $code -eq "0" ]] && [[ -f "cpp/$obj" ]]; then
             log "$obj is compiled"
+            compiled=$((compiled + 1))
         else
             log "$obj is not compiled"
-            failures=$((failures + 1))
+            exit 1
         fi
     fi
 done
@@ -45,4 +46,4 @@ done
 [[ -d cpp ]] && rm -r cpp
 
 log "---------------------------------"
-log "Summary: failed to compile $failures files"
+log "Summary: compiled $compiled files"
