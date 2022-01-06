@@ -1,11 +1,16 @@
 #!/bin/bash
 
+PYTHON_EXECUTABLE=py # Windows Python Launcher by default
+
+if [ "$#" -eq "1" ]; then
+    PYTHON_EXECUTABLE=$1 # custom python executable
+fi
+
 # dependencies
 RAPIDJSON="../external/include"
 
 CC=g++
 CFLAGS="-std=c++17 -Wall -Werror -Wextra -pedantic -I$RAPIDJSON"
-PYTHON_EXECUTABLE=py
 VERBOSE=1
 
 log() {
